@@ -67,8 +67,26 @@ static const char *TAG = "example";
 
 #define NTOPICS 2
 
-static char *moveTopcis[NTOPICS] = {"ESP8266/1/RTC/config",
-                                    "ESP8266/1/LED/config"};
+typedef struct {
+	char *stringTopic;
+	void (*func)(void);
+}mqtt_subscribes_t;
+
+static void messageArrived_rtc(MessageData* data)
+{
+    printf("\"ESP8266/1/RTC/cmd\": %s\n", (char*)data->message->payload);
+}
+
+static void messageArrived_led(MessageData* data)
+{
+    printf("\"ESP8266/1/LED/cmd\": %s\n", (char*)data->message->payload);
+} 
+
+// Mapping functions for topics
+mqtt_subscribes_t mqtt_subscribes[NTOPICS] = {
+    {"ESP8266/1/RTC/cmd", 		messageArrived_rtc},
+    {"ESP8266/1/LED/cmd", 		messageArrived_led},
+};
 
 
 static esp_err_t event_handler(void *ctx, system_event_t *event)
@@ -110,11 +128,6 @@ static void initialise_wifi(void)
     ESP_ERROR_CHECK( esp_wifi_set_mode(WIFI_MODE_STA) );
     ESP_ERROR_CHECK( esp_wifi_set_config(ESP_IF_WIFI_STA, &wifi_config) );
     ESP_ERROR_CHECK( esp_wifi_start() );
-}
-
-static void messageArrived(MessageData* data)
-{
-    printf("Message arrived: %s\n", (char*)data->message->payload);
 }
 
 static void mqtt_client_thread(void* pvParameters)
@@ -162,12 +175,16 @@ static void mqtt_client_thread(void* pvParameters)
         printf("MQTT Connected\n");
     }
 
-    if ((rc = MQTTSubscribe(&client, "ESP8266/sample/sub", 2, messageArrived)) != 0) {
-        printf("Return code from MQTT subscribe is %d\n", rc);
-    } else {
-        printf("MQTT subscribe to topic \"ESP8266/sample/sub\"\n");
-    }
 
+    for(int i=0; i< NTOPICS; i++){
+        if ((rc = MQTTSubscribe(&client, mqtt_subscribes[i].stringTopic, 2, mqtt_subscribes[i].func)) != 0) {
+            printf("Return code from MQTT subscribe to topic %s is %d\n",  mqtt_subscribes[i].stringTopic, rc);
+        } else {
+            printf("MQTT subscribe to topic %s\n", mqtt_subscribes[i].stringTopic);
+        }
+    }
+    
+    
     while (++count) {
         MQTTMessage message;
         char payload[30];
